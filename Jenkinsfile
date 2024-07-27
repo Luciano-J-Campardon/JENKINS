@@ -20,7 +20,7 @@ pipeline {
 
         stage('Instalar dependencias') {
             steps {
-                sh 'mvn clean install -DskipTests'
+                sh 'mvn clean install'
             }
         }
 
@@ -44,29 +44,24 @@ pipeline {
             }
         }
 
-        stage('Subir imagen Docker') {
+        stage('Desplegar en Nginx') {
             steps {
                 script {
-                        docker.image("${DOCKER_IMAGE}").push()
-                }
-            }
-        }
+                    // Copiar el archivo WAR generado a una ubicación temporal
+                    sh 'cp target/mi-aplicacion.war /tmp/mi-aplicacion.war'
+                    
+                    // Crear un Dockerfile para construir la imagen con Nginx
+                    writeFile file: 'Dockerfile', text: '''
+                    FROM nginx:alpine
+                    COPY /tmp/mi-aplicacion.war /usr/share/nginx/html/mi-aplicacion.war
+                    EXPOSE 80
+                    '''
 
-        stage('Desplegar aplicación') {
-            steps {
-                script {
-                    // Copiar los archivos necesarios al directorio de despliegue
-                    sh 'mkdir -p deployment'
-                    sh 'cp target/*.jar deployment/'
-                    sh 'cp Dockerfile deployment/'
-                    sh 'cp docker-compose.yml deployment/'
-                    sh 'cp nginx.conf deployment/'
+                    // Construir la imagen Docker
+                    sh 'docker build -t mi-aplicacion-nginx .'
 
-                    // Desplegar usando Docker Compose
-                    dir('deployment') {
-                        sh 'docker-compose down || true'
-                        sh 'docker-compose up -d --build'
-                    }
+                    // Ejecutar el contenedor de Docker
+                    sh 'docker run -d -p 80:80 mi-aplicacion-nginx'
                 }
             }
         }
