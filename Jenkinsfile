@@ -40,12 +40,12 @@ http {
             index  index.html index.htm;
         }
 
-        location ~* ^.+\.(jpg|jpeg|gif|png|ico|css|js|html|htm)$ {
+        location ~* ^.+\\.(jpg|jpeg|gif|png|ico|css|js|html|htm)$ {
             root /usr/share/nginx/html/myapp;
         }
 
         location ~ \\.(jsp|do)$ {
-            proxy_pass http://localhost:8082;
+            proxy_pass http://localhost:8080;
         }
     }
 }
