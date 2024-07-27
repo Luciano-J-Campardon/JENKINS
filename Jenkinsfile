@@ -2,69 +2,64 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE_NAME = 'java-app'
-        DOCKER_IMAGE_TAG = '1.0'
-        DOCKER_IMAGE = "${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}"
-    }
-
-    tools {
-        maven 'Maven'
+        // Define variables de entorno necesarias aquí, si las hay
+        PORT = '80'
     }
 
     stages {
-        stage('Clonar repositorio') {
+        stage('Clonar Repositorio') {
             steps {
-                git branch: 'main', url: 'https://github.com/challengerepos/java.git'
+                git 'https://github.com/challengerepos/java'
             }
         }
 
-        stage('Instalar dependencias') {
-            steps {
-                sh 'mvn clean install'
-            }
-        }
-
-        stage('Compilar') {
-            steps {
-                sh 'mvn compile'
-            }
-        }
-
-        stage('Ejecutar pruebas') {
-            steps {
-                sh 'mvn test'
-            }
-        }
-
-        stage('Construir imagen Docker') {
+        stage('Instalar Dependencias') {
             steps {
                 script {
-                    docker.build("${DOCKER_IMAGE}")
+                    // Suponiendo que usas Maven para gestionar las dependencias
+                    sh 'mvn clean install'
                 }
             }
         }
 
-        stage('Desplegar en Nginx') {
+        stage('Compilar Código') {
             steps {
                 script {
-                    // Copiar el archivo WAR generado a una ubicación temporal
-                    sh 'cp target/mi-aplicacion.war /tmp/mi-aplicacion.war'
-                    
-                    // Crear un Dockerfile para construir la imagen con Nginx
-                    writeFile file: 'Dockerfile', text: '''
-                    FROM nginx:alpine
-                    COPY /tmp/mi-aplicacion.war /usr/share/nginx/html/mi-aplicacion.war
-                    EXPOSE 80
-                    '''
+                    // Empaquetar el proyecto en un JAR
+                    sh 'mvn package'
+                }
+            }
+        }
 
-                    // Construir la imagen Docker
-                    sh 'docker build -t mi-aplicacion-nginx .'
+        stage('Preparar Servidor Web') {
+            steps {
+                script {
+                    // Instalación de Node.js y http-server si no están instalados
+                    sh 'npm install -g http-server'
 
-                    // Ejecutar el contenedor de Docker
-                    sh 'docker run -d -p 80:80 mi-aplicacion-nginx'
+                    // Crear una carpeta para el despliegue y copiar el JAR allí
+                    sh 'mkdir -p /tmp/app'
+                    sh 'cp target/*.jar /tmp/app/app.jar'
+
+                    // Crear un archivo index.html para servir el JAR (opcional)
+                    writeFile file: '/tmp/app/index.html', text: '<html><body><h1>Application Deployed</h1></body></html>'
+                }
+            }
+        }
+
+        stage('Desplegar en Servidor Web') {
+            steps {
+                script {
+                    // Iniciar un servidor web simple usando http-server
+                    sh 'http-server /tmp/app -p $PORT'
                 }
             }
         }
     }
-}
 
+    post {
+        always {
+            cleanWs() // Limpiar el workspace después de cada ejecución
+        }
+    }
+}
