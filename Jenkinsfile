@@ -1,57 +1,99 @@
 pipeline {
     agent any
 
-    environment {
-        // Define variables de entorno necesarias aquí, si las hay
-        PORT = '80'
+    tools {
+        maven 'Maven'
+        jdk 'JDK'
     }
 
     stages {
-        stage('Clonar Repositorio') {
+        stage('Clone Repository') {
             steps {
-                git 'https://github.com/challengerepos/java'
+                git 'https://github.com/challengerepos/java.git'
             }
         }
 
-        stage('Instalar Dependencias') {
+        stage('Install Dependencies and Compile') {
+            steps {
+                sh 'mvn clean install'
+            }
+        }
+
+        stage('Create Nginx Config') {
             steps {
                 script {
-                    // Suponiendo que usas Maven para gestionar las dependencias
-                    sh 'mvn clean install'
+                    writeFile file: 'nginx.conf', text: '''
+events {
+    worker_connections 1024;
+}
+
+http {
+    include       mime.types;
+    default_type  application/octet-stream;
+
+    server {
+        listen 80;
+        server_name localhost;
+
+        location / {
+            root   /usr/share/nginx/html/myapp;
+            index  index.html index.htm;
+        }
+
+        location ~* ^.+\.(jpg|jpeg|gif|png|ico|css|js|html|htm)$ {
+            root /usr/share/nginx/html/myapp;
+        }
+
+        location ~ \\.(jsp|do)$ {
+            proxy_pass http://localhost:8082;
+        }
+    }
+}
+'''
                 }
             }
         }
 
-        stage('Compilar Código') {
+        stage('Create Dockerfile') {
             steps {
                 script {
-                    // Empaquetar el proyecto en un JAR
-                    sh 'mvn package'
+                    writeFile file: 'Dockerfile', text: '''
+FROM nginx:alpine
+
+COPY target/*.war /tmp/app.war
+
+RUN apk add --no-cache openjdk8-jre unzip
+
+RUN mkdir -p /usr/share/nginx/html/myapp && \
+    unzip /tmp/app.war -d /usr/share/nginx/html/myapp && \
+    rm /tmp/app.war
+
+COPY nginx.conf /etc/nginx/nginx.conf
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
+'''
                 }
             }
         }
 
-        stage('Preparar Servidor Web') {
+        stage('Build Docker Image') {
             steps {
                 script {
-                    // Instalación de Node.js y http-server si no están instalados
-                    sh 'npm install -g http-server'
-
-                    // Crear una carpeta para el despliegue y copiar el JAR allí
-                    sh 'mkdir -p /tmp/app'
-                    sh 'cp target/*.jar /tmp/app/app.jar'
-
-                    // Crear un archivo index.html para servir el JAR (opcional)
-                    writeFile file: '/tmp/app/index.html', text: '<html><body><h1>Application Deployed</h1></body></html>'
+                    dockerImage = docker.build("java-app:${env.BUILD_ID}")
                 }
             }
         }
 
-        stage('Desplegar en Servidor Web') {
+        stage('Deploy to Nginx') {
             steps {
                 script {
-                    // Iniciar un servidor web simple usando http-server
-                    sh 'http-server /tmp/app -p $PORT'
+                    sh '''
+                    docker stop java-nginx-app || true
+                    docker rm java-nginx-app || true
+                    docker run -d --name java-nginx-app -p 8082:80 java-app:${BUILD_ID}
+                    '''
                 }
             }
         }
@@ -59,7 +101,7 @@ pipeline {
 
     post {
         always {
-            cleanWs() // Limpiar el workspace después de cada ejecución
+            cleanWs()
         }
     }
 }

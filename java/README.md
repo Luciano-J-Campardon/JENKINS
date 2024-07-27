@@ -1,3 +1,1 @@
 Challenge Devops Java
-
-Testing
